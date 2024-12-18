@@ -28,6 +28,7 @@ Regex startGameMatcher = new(@"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \d+ [a-fA-F0
 Regex startLoadMatcher = new(@"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \d+ [a-fA-F0-9]+ \[INFO Client \d+\] \[SHADER\] Delay: OFF$", RegexOptions.Compiled);
 Regex endLoadMatcher = new(@"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \d+ [a-fA-F0-9]+ \[INFO Client \d+\] \[SHADER\] Delay: ON", RegexOptions.Compiled);
 
+bool isLoading = false;
 var fallbackGamePath = @"C:\Program Files (x86)\Grinding Gear Games\Path of Exile 2"; 
 var cancellationSource = new CancellationTokenSource();
 Console.CancelKeyPress += (_, _) => cancellationSource.Cancel();
@@ -43,12 +44,48 @@ _ = Task.Run(async() => {
         if (int.TryParse(line, out var coreOverride)) {
             Interlocked.Exchange(ref coresToPark, coreOverride);
             if (coreOverride >= Environment.ProcessorCount) {
-                Console.WriteLine($"You can't override more cores than you have.");
+                logger.LogError("You can't override more cores than you have.");
                 continue;
             }
             
-            Console.WriteLine($"Future attempts at parking cores will park {coreOverride} cores.");
+            logger.LogInformation("Future attempts at parking cores will park {coreOverride} cores.", coreOverride);
         }
+    }
+});
+
+_ = Task.Run(async () => {
+    bool realtime = false;
+    while (!cancellationSource.IsCancellationRequested) {
+        if (isLoading) {
+            var proc = await GetPathOfExileProcess();
+            if (!realtime) {
+                if (proc is { Responding: false }) {
+                    logger.LogWarning(
+                        "PoE Process not Responding: Attempting to recover process by setting it to realtime. Note that you need to be running this program as an Administrator for this to work."
+                    );
+                    proc.PriorityClass = ProcessPriorityClass.RealTime;
+                    realtime = true;
+                }
+            } else {
+                if (proc == null || proc.HasExited) {
+                    // PoE crashed or quit; reset realtime so we can do it next time PoE starts.
+                    realtime = false;
+                    isLoading = false;
+                    logger.LogError("PoE quit while we set it realtime; resetting loading and realtime status.");
+                }  
+            }
+        } else {
+            if (realtime) {
+                var proc = await GetPathOfExileProcess();
+                if (proc != null) {
+                    logger.LogInformation("Loading is done, falling back from realtime.");
+                    proc.PriorityClass = ProcessPriorityClass.Normal;
+                    realtime = false;
+                }
+            }
+        }
+
+        await Task.Delay(200, cancellationSource.Token).ConfigureAwait(false);
     }
 });
 
@@ -79,6 +116,7 @@ using var reader = new StreamReader(logStream);
 
 logger.LogInformation("Reading client data from {clientTxtLocation}", clientTxtLocation);
 
+
 while (!cancellationSource.IsCancellationRequested) {
     var line = await reader.ReadLineAsync();
     if (String.IsNullOrWhiteSpace(line) || line.Length > 256) {
@@ -92,6 +130,7 @@ while (!cancellationSource.IsCancellationRequested) {
         await ResumeCores();
     }
 }
+
 
 async Task<Process?> WaitForExecutableToLaunch() {
     while (!cancellationSource.IsCancellationRequested) {
@@ -118,6 +157,7 @@ async Task ParkCores() {
     if (proc is { HasExited: false }) {
         proc.ProcessorAffinity = affinity;
         logger.LogInformation("Parked cores: {affinityBits}", affinityBits);
+        Interlocked.Exchange(ref isLoading, true);
     } else {
         logger.LogError("Detected loading screen, but could not find any process to park.");
     }
@@ -132,6 +172,7 @@ async Task ResumeCores() {
     if (proc is { HasExited: false }) {
         proc.ProcessorAffinity = affinity;
         logger.LogInformation("Unparked cores: {affinityBits}", affinityBits);
+        Interlocked.Exchange(ref isLoading, false);
     } else {
         logger.LogError("Detected loading screen, but could not find any process to unpark.");
     }
