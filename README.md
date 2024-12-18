@@ -19,3 +19,7 @@ Personally I've tried this for a little bit and the crashes have stopped, but I'
 1. Grab the release from the [releases page](https://github.com/Kapps/PoEUncrasher/releases/)
 2. Unzip it
 3. Run the executable there. It doesn't matter if you run it before or after PoE starts.
+
+## Is this Allowed?
+
+The tool does not interact with the game client in any way that's not allowed. It reads from the client.txt file, which is explicitly allowed by GGG. Other than that, all it does is modify the process affinity exactly as if you were using the task manager. This means it should be completely fine to use.
