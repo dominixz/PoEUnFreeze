@@ -9,6 +9,8 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
+int coresToPark = 2;
+
 ServiceProvider serviceProvider = new ServiceCollection()
     .AddLogging((loggingBuilder) => loggingBuilder
         .SetMinimumLevel(LogLevel.Trace)
@@ -22,6 +24,7 @@ ServiceProvider serviceProvider = new ServiceCollection()
 
 var logger = serviceProvider.GetService<ILoggerFactory>()!.CreateLogger<Program>();
 
+Regex startGameMatcher = new(@"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \d+ [a-fA-F0-9]+ \[INFO Client \d+\] \[ENGINE\] Init$", RegexOptions.Compiled);
 Regex startLoadMatcher = new(@"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \d+ [a-fA-F0-9]+ \[INFO Client \d+\] \[SHADER\] Delay: OFF$", RegexOptions.Compiled);
 Regex endLoadMatcher = new(@"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \d+ [a-fA-F0-9]+ \[INFO Client \d+\] \[SHADER\] Delay: ON", RegexOptions.Compiled);
 
@@ -29,9 +32,37 @@ var fallbackGamePath = @"C:\Program Files (x86)\Grinding Gear Games\Path of Exil
 var cancellationSource = new CancellationTokenSource();
 Console.CancelKeyPress += (_, _) => cancellationSource.Cancel();
 
+_ = Task.Run(async() => {
+    while (!cancellationSource.IsCancellationRequested) {
+        var line = Console.ReadLine();
+        if (String.IsNullOrWhiteSpace(line)) {
+            await Task.Delay(100, cancellationSource.Token).ConfigureAwait(false);
+            continue;
+        }
+
+        if (int.TryParse(line, out var coreOverride)) {
+            Interlocked.Exchange(ref coresToPark, coreOverride);
+            if (coreOverride >= Environment.ProcessorCount) {
+                Console.WriteLine($"You can't override more cores than you have.");
+                continue;
+            }
+            
+            Console.WriteLine($"Future attempts at parking cores will park {coreOverride} cores.");
+        }
+    }
+});
+
 // We'll use the PoE process to get the right client.txt path across standalone / Steam.
 logger.LogInformation("Waiting for Path of Exile process to launch before doing anything.");
-var proc = await WaitForExecutableToLaunch();
+
+var proc = await GetPathOfExileProcess();
+if (proc == null) {
+    // If the game wasn't already running, it will log engine init before we start watching.
+    // So if we started before the game starts, park first to prevent launch crashes.
+    // We'll unpark when the user loads into a zone.
+    proc = await WaitForExecutableToLaunch();
+    await ParkCores();
+}
 
 string? gameDirectory = Path.GetDirectoryName(proc?.MainModule?.FileName);
 if (string.IsNullOrEmpty(gameDirectory)) {
@@ -55,35 +86,35 @@ while (!cancellationSource.IsCancellationRequested) {
         continue;
     }
 
-    if (startLoadMatcher.IsMatch(line)) {
-        ParkCores();
+    if (startLoadMatcher.IsMatch(line) || startGameMatcher.IsMatch(line)) {
+        await ParkCores();
     } else if (endLoadMatcher.IsMatch(line)) {
-        ResumeCores();
+        await ResumeCores();
     }
 }
 
 async Task<Process?> WaitForExecutableToLaunch() {
     while (!cancellationSource.IsCancellationRequested) {
-        var proc = GetPathOfExileProcess();
+        var proc = await GetPathOfExileProcess();
         if (proc is { HasExited: false }) {
             return proc;
         }
         
-        await Task.Delay(1000);
+        await Task.Delay(200);
     }
 
     return null;
 }
 
-void ParkCores() {
-    var affinityBits = new StringBuilder(new string('1', Environment.ProcessorCount)) {
-        [^1] = '0',
-        [^2] = '0'
+async Task ParkCores() {
+    var affinityBits = new StringBuilder(new string('1', Environment.ProcessorCount));
+    for (int i = 0; i < coresToPark; i++) {
+        affinityBits[affinityBits.Length - i - 1] = '0';
     };
 
     IntPtr affinity = new IntPtr(Convert.ToInt32(affinityBits.ToString(), 2));
     
-    var proc = GetPathOfExileProcess();
+    var proc = await GetPathOfExileProcess();
     if (proc is { HasExited: false }) {
         proc.ProcessorAffinity = affinity;
         logger.LogInformation("Parked cores: {affinityBits}", affinityBits);
@@ -92,12 +123,12 @@ void ParkCores() {
     }
 }
 
-void ResumeCores() {
+async Task ResumeCores() {
     var affinityBits = new StringBuilder(new string('1', Environment.ProcessorCount));
 
     IntPtr affinity = new IntPtr(Convert.ToInt32(affinityBits.ToString(), 2));
     
-    var proc = GetPathOfExileProcess();
+    var proc = await GetPathOfExileProcess();
     if (proc is { HasExited: false }) {
         proc.ProcessorAffinity = affinity;
         logger.LogInformation("Unparked cores: {affinityBits}", affinityBits);
@@ -106,7 +137,23 @@ void ResumeCores() {
     }
 }
 
-Process? GetPathOfExileProcess() {
-    Func<Process, bool> isPoE = (c => c.MainWindowTitle.Equals("Path of Exile 2", StringComparison.InvariantCultureIgnoreCase) && c.ProcessName.Contains("PathOfExile"));
-    return Process.GetProcesses().FirstOrDefault(isPoE);
+async Task<Process?> GetPathOfExileProcess() {
+    // When PoE is first launched, it takes a bit of time for the MainWindowTitle to register.
+    // The client is logging during this time though. So we can't find the process when needed.
+    // We also want to do it as soon as possible to avoid giving it time to crash. 
+    var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+    while (!cts.IsCancellationRequested) {
+        var procs = Process.GetProcesses();
+        Func<Process, bool> isPoE = (c =>
+            c.MainWindowTitle.Equals("Path of Exile 2", StringComparison.InvariantCultureIgnoreCase)
+            && c.ProcessName.Contains("PathOfExile")
+        );
+        var result = procs.FirstOrDefault(isPoE);
+        if (result != null)
+            return result;
+
+        await Task.Delay(20);
+    }
+
+    return null;
 }
