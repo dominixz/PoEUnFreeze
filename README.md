@@ -10,7 +10,9 @@ That involves doing it every time you launch PoE2 though, and it also prevents y
 What this tool does is detects when you're starting a loading screen (by reading client.txt), then changing the process affinity to not use CPU0/CPU1. Once the loading screen is complete
 (again, discovers this by reading client.txt), it updates the affinity to be able to use those cores again.
 
-Personally I've tried this for a little bit and the crashes have stopped, but I'd be interested to hear if others have had luck.
+This causes Windows to no longer freeze up, but it looks like for some people the game still freezes instead. I've found that when this happens, if you set the PoE process priority to realtime,
+you can make PoE recover and unfreeze. For people who still experience the game (but not their PC) freezing after using this tool, run it as an administrator and it will attempt to recover
+PoE by setting the process to realtime when it detects the game freezes. After the game recovers, it reverts it back to normal priority.
 
 **If your issue is not Windows freezing on a loading screen, this tool will do nothing for you.**
 
@@ -23,4 +25,4 @@ Personally I've tried this for a little bit and the crashes have stopped, but I'
 
 ## Is this Allowed?
 
-The tool does not interact with the game client in any way that's not allowed. It reads from the client.txt file, which is explicitly allowed by GGG. Other than that, all it does is modify the process affinity exactly as if you were using the task manager. This means it should be completely fine to use.
+The tool does not interact with the game client in any way that's not allowed. It reads from the client.txt file, which is explicitly allowed by GGG. Other than that, all it does is modify the process affinity/priority exactly as if you were using the task manager. This means it should be completely fine to use.
