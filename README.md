@@ -19,6 +19,7 @@ Personally I've tried this for a little bit and the crashes have stopped, but I'
 1. Grab the release from the [releases page](https://github.com/Kapps/PoEUncrasher/releases/)
 2. Unzip it
 3. Run the executable there. It doesn't matter if you run it before or after PoE starts.
+4. If you have issues where PoE still freezes but your computer doesn't, run the executable as an administrator instead. That should cause it to recover PoE.
 
 ## Is this Allowed?
 
