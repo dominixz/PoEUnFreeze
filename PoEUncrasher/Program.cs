@@ -152,7 +152,7 @@ async Task<Process?> GetPathOfExileProcess() {
         if (result != null)
             return result;
 
-        await Task.Delay(20);
+        await Task.Delay(100);
     }
 
     return null;
