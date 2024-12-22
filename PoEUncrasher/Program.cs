@@ -155,7 +155,7 @@ async Task ParkCores() {
         affinityBits[affinityBits.Length - i - 1] = '0';
     }
 
-    IntPtr affinity = new IntPtr(Convert.ToInt32(affinityBits.ToString(), 2));
+    IntPtr affinity = new IntPtr(Convert.ToInt64(affinityBits.ToString(), 2));
     
     var proc = await GetPathOfExileProcess();
     if (proc is { HasExited: false }) {
@@ -170,7 +170,7 @@ async Task ParkCores() {
 async Task ResumeCores() {
     var affinityBits = new StringBuilder(new string('1', numCores));
 
-    IntPtr affinity = new IntPtr(Convert.ToInt32(affinityBits.ToString(), 2));
+    IntPtr affinity = new IntPtr(Convert.ToInt64(affinityBits.ToString(), 2));
     
     var proc = await GetPathOfExileProcess();
     if (proc is { HasExited: false }) {
@@ -212,7 +212,7 @@ int GetNumberProcessors() {
     
     // First, try the expected amount.
     try {
-        self.ProcessorAffinity = new IntPtr(Convert.ToInt32(new string('1', Environment.ProcessorCount), 2));
+        self.ProcessorAffinity = new IntPtr(Convert.ToInt64(new string('1', Environment.ProcessorCount), 2));
         return Environment.ProcessorCount;
     } catch (Win32Exception) {
         logger.LogWarning(
@@ -223,7 +223,7 @@ int GetNumberProcessors() {
 
     for (int i = Environment.ProcessorCount * 2; i > 0; i--) {
         try {
-            self.ProcessorAffinity = new IntPtr(Convert.ToInt32(new string('1', i), 2));
+            self.ProcessorAffinity = new IntPtr(Convert.ToInt64(new string('1', i), 2));
             logger.LogWarning(
                 "Calculated that we should be using {numCores} cores. Will proceed with that number.",
                 i
