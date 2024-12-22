@@ -1,15 +1,12 @@
 ﻿// See https://aka.ms/new-console-template for more information
 #pragma warning disable CA1416
 
-using System.Collections;
-using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-
-int coresToPark = 2;
 
 ServiceProvider serviceProvider = new ServiceCollection()
     .AddLogging((loggingBuilder) => loggingBuilder
@@ -23,6 +20,13 @@ ServiceProvider serviceProvider = new ServiceCollection()
     .BuildServiceProvider();
 
 var logger = serviceProvider.GetService<ILoggerFactory>()!.CreateLogger<Program>();
+
+int numCores = GetNumberProcessors();
+
+int coresToPark = 2;
+if (Int32.TryParse(Environment.GetEnvironmentVariable("CORES_TO_PARK"), out int coresToParkEnv)) {
+    coresToPark = coresToParkEnv;
+}
 
 Regex startGameMatcher = new(@"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \d+ [a-fA-F0-9]+ \[INFO Client \d+\] \[ENGINE\] Init$", RegexOptions.Compiled);
 Regex startLoadMatcher = new(@"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \d+ [a-fA-F0-9]+ \[INFO Client \d+\] \[SHADER\] Delay: OFF$", RegexOptions.Compiled);
@@ -43,7 +47,7 @@ _ = Task.Run(async() => {
 
         if (int.TryParse(line, out var coreOverride)) {
             Interlocked.Exchange(ref coresToPark, coreOverride);
-            if (coreOverride >= Environment.ProcessorCount) {
+            if (coreOverride >= numCores) {
                 logger.LogError("You can't override more cores than you have.");
                 continue;
             }
@@ -146,10 +150,10 @@ async Task<Process?> WaitForExecutableToLaunch() {
 }
 
 async Task ParkCores() {
-    var affinityBits = new StringBuilder(new string('1', Environment.ProcessorCount));
+    var affinityBits = new StringBuilder(new string('1', numCores));
     for (int i = 0; i < coresToPark; i++) {
         affinityBits[affinityBits.Length - i - 1] = '0';
-    };
+    }
 
     IntPtr affinity = new IntPtr(Convert.ToInt32(affinityBits.ToString(), 2));
     
@@ -164,7 +168,7 @@ async Task ParkCores() {
 }
 
 async Task ResumeCores() {
-    var affinityBits = new StringBuilder(new string('1', Environment.ProcessorCount));
+    var affinityBits = new StringBuilder(new string('1', numCores));
 
     IntPtr affinity = new IntPtr(Convert.ToInt32(affinityBits.ToString(), 2));
     
@@ -197,4 +201,37 @@ async Task<Process?> GetPathOfExileProcess() {
     }
 
     return null;
+}
+
+int GetNumberProcessors() {
+    // Some AMD CPUs will park half the cores for games.
+    // This seems to make the number of threads that need to be passed in to the affinity not line up with the number of
+    // threads that are reported by the `NUMBER_OF_PROCESSORS` environment variable.
+    // So let's just try to calculate it by using our own process.
+    var self = Process.GetCurrentProcess();
+    
+    // First, try the expected amount.
+    try {
+        self.ProcessorAffinity = new IntPtr(Convert.ToInt32(new string('1', Environment.ProcessorCount), 2));
+        return Environment.ProcessorCount;
+    } catch (Win32Exception) {
+        logger.LogWarning(
+            "Number of cores reported to us was {numCores}, but this appears different than the affinity. Trying to calculate real number.",
+            Environment.ProcessorCount
+        );
+    }
+
+    for (int i = Environment.ProcessorCount * 2; i > 0; i--) {
+        try {
+            self.ProcessorAffinity = new IntPtr(Convert.ToInt32(new string('1', i), 2));
+            logger.LogWarning(
+                "Calculated that we should be using {numCores} cores. Will proceed with that number.",
+                i
+            );
+            return i;
+        } catch(Win32Exception) {}
+    }
+    
+    logger.LogCritical("Could not detect number of processors being used. We can't continue as a result. Please file a bug report.");
+    throw new InvalidOperationException("Could not detect number of processors being used.");
 }
