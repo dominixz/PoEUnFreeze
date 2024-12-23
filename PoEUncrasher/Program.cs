@@ -115,9 +115,8 @@ string clientTxtLocation = Path.Combine(gameDirectory, "logs", "client.txt");
 string kakaoClientTxtLocation = Path.Combine(gameDirectory, "logs", "KakaoClient.txt");
 
 string clientTxtPath = clientTxtLocation;
-
-if (Path.Exists(kakaoClientTxtLocation))
-{
+if (Path.Exists(kakaoClientTxtLocation)) {
+    logger.LogInformation("Detected KR client log file -- using KakaoClient.txt as source instead.");
     clientTxtPath = kakaoClientTxtLocation;
 }
 
@@ -230,7 +229,7 @@ int GetNumberProcessors() {
         );
     }
 
-    for (int i = Environment.ProcessorCount * 2; i > 0; i--) {
+    for (int i = Math.Min(64, Environment.ProcessorCount * 2); i > 0; i--) {
         try {
             self.ProcessorAffinity = new IntPtr(Convert.ToInt64(new string('1', i), 2));
             logger.LogWarning(
