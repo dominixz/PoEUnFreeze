@@ -112,13 +112,22 @@ if (string.IsNullOrEmpty(gameDirectory)) {
 }
 
 string clientTxtLocation = Path.Combine(gameDirectory, "logs", "client.txt");
+string kakaoClientTxtLocation = Path.Combine(gameDirectory, "logs", "KakaoClient.txt");
 
-await using var logStream = new FileStream(clientTxtLocation, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+string clientTxtPath = clientTxtLocation;
+
+if (Path.Exists(kakaoClientTxtLocation))
+{
+    clientTxtPath = kakaoClientTxtLocation;
+}
+
+
+await using var logStream = new FileStream(clientTxtPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 logStream.Seek(0, SeekOrigin.End);
 
 using var reader = new StreamReader(logStream);
 
-logger.LogInformation("Reading client data from {clientTxtLocation}", clientTxtLocation);
+logger.LogInformation("Reading client data from {clientTxtPath}", clientTxtPath);
 
 
 while (!cancellationSource.IsCancellationRequested) {
