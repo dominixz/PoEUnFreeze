@@ -7,8 +7,6 @@ This is a simple, light-weight, tool to fix PoE 2 causing Windows to freeze comp
 1. [How it works](#how-it-works)
 2. [How to Use](#how-to-use)
 3. [FAQ](#faq)
-   - [I open the process, but nothing seems to happen.](#i-open-the-process-but-nothing-seems-to-happen)
-   - [Windows Defender is detecting this as a virus](#windows-defender-is-detecting-this-as-a-virus)
    - [Is this allowed?](#is-this-allowed)
    - [How do I know if it's working?](#how-do-i-know-if-its-working)
 
@@ -35,15 +33,12 @@ PoE by setting the process to realtime when it detects the game freezes. After t
 
 ## FAQ
 
-### I open the process, but nothing seems to happen.
-Make sure you have .NET Framework 9 installed, specifically the 64-bit SDK (probably just the runtime is fine, but I haven't tested it yet). Download it from [this link](https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/sdk-9.0.101-windows-x64-binaries).
-
-### Windows Defender is detecting this as a virus
-The version that doesn't require .NET (`PoEUncrasher.-.Non.NET.zip`) runs into issues with false positives. It seems to be a [known issue](https://github.com/dotnet/runtime/issues/33745) with .NET/Windows Defender. Make sure you have .NET 9 installed (see above) and use the .NET version (`PoE.Uncrasher.zip`) instead.
+### Does this work for Path of Exile 1?
+As of v1.4.0, it works for PoE 1, however the program can only support one game at a time. If you launch the program, then launch PoE 2, and you want to play PoE 1, you will need to close PoE 2, restart the program, and then launch PoE 1.
 
 ### Is this allowed?
 The tool does not interact with the game client in any way that's not allowed. It reads from the client.txt file, which is explicitly allowed by GGG. Other than that, all it does is modify the process affinity/priority exactly as if you were using the task manager. This means it should be completely fine to use.
 
 ### How do I know if it's working?
-You should see something like this. If you don't see any console window after opening the program, make sure you have .NET 9 installed.
+You should see something like this.
 ![image](https://github.com/user-attachments/assets/03e95e15-bbb1-4ebd-8c2f-345c37ab4643)
