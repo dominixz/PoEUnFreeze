@@ -7,6 +7,7 @@ This is a simple, light-weight, tool to fix PoE 2 causing Windows to freeze comp
 1. [How it works](#how-it-works)
 2. [How to Use](#how-to-use)
 3. [FAQ](#faq)
+   - [Does this work for Path of Exile 1?](#does-this-work-for-path-of-exile-1)
    - [Is this allowed?](#is-this-allowed)
    - [How do I know if it's working?](#how-do-i-know-if-its-working)
 
