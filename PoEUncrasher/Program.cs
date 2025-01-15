@@ -23,7 +23,7 @@ var logger = serviceProvider.GetService<ILoggerFactory>()!.CreateLogger<Program>
 
 int numCores = GetNumberProcessors();
 
-int coresToPark = 2;
+int coresToPark = 4;
 if (Int32.TryParse(Environment.GetEnvironmentVariable("CORES_TO_PARK"), out int coresToParkEnv)) {
     coresToPark = coresToParkEnv;
 }
@@ -32,7 +32,8 @@ Regex startGameMatcher = new(@"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \d+ [a-fA-F0
 Regex startLoadMatcher = new(@"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \d+ [a-fA-F0-9]+ \[INFO Client \d+\] \[SHADER\] Delay: OFF$", RegexOptions.Compiled);
 Regex endLoadMatcher = new(@"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \d+ [a-fA-F0-9]+ \[INFO Client \d+\] \[SHADER\] Delay: ON", RegexOptions.Compiled);
 
-bool isLoading = false;
+long isLoading = 0;
+
 var fallbackGamePath = @"C:\Program Files (x86)\Grinding Gear Games\Path of Exile 2"; 
 var cancellationSource = new CancellationTokenSource();
 Console.CancelKeyPress += (_, _) => cancellationSource.Cancel();
@@ -60,7 +61,7 @@ _ = Task.Run(async() => {
 _ = Task.Run(async () => {
     bool realtime = false;
     while (!cancellationSource.IsCancellationRequested) {
-        if (isLoading) {
+        if (Interlocked.Read(ref isLoading) == 1) {
             var proc = await GetPathOfExileProcess();
             if (!realtime) {
                 if (proc is { Responding: false }) {
@@ -69,12 +70,23 @@ _ = Task.Run(async () => {
                     );
                     proc.PriorityClass = ProcessPriorityClass.RealTime;
                     realtime = true;
+
+                    _ = Task.Run(() => {
+                        // ReSharper disable once AccessToModifiedClosure
+                        while (Interlocked.Read(ref isLoading) == 1) {
+                            if (!proc.HasExited && proc.PriorityClass != ProcessPriorityClass.RealTime) {
+                                logger.LogWarning("Process is no longer running in realtime priority. Setting it back to realtime.");
+                                proc.PriorityClass = ProcessPriorityClass.RealTime;
+                            }
+                            Thread.Sleep(200);
+                        }
+                    });
                 }
             } else {
                 if (proc == null || proc.HasExited) {
                     // PoE crashed or quit; reset realtime so we can do it next time PoE starts.
                     realtime = false;
-                    isLoading = false;
+                    Interlocked.Exchange(ref isLoading, 0);
                     logger.LogError("PoE quit while we set it realtime; resetting loading and realtime status.");
                 }  
             }
@@ -127,6 +139,7 @@ logStream.Seek(0, SeekOrigin.End);
 using var reader = new StreamReader(logStream);
 
 logger.LogInformation("Reading client data from {clientTxtPath}", clientTxtPath);
+logger.LogInformation("Note that if you switch between game clients (PoE 2 to PoE or vice-versa) you will need to restart the program.");
 
 
 while (!cancellationSource.IsCancellationRequested) {
@@ -169,7 +182,7 @@ async Task ParkCores() {
     if (proc is { HasExited: false }) {
         proc.ProcessorAffinity = affinity;
         logger.LogInformation("Parked cores: {affinityBits}", affinityBits);
-        Interlocked.Exchange(ref isLoading, true);
+        Interlocked.Exchange(ref isLoading, 1);
     } else {
         logger.LogError("Detected loading screen, but could not find any process to park.");
     }
@@ -184,7 +197,7 @@ async Task ResumeCores() {
     if (proc is { HasExited: false }) {
         proc.ProcessorAffinity = affinity;
         logger.LogInformation("Unparked cores: {affinityBits}", affinityBits);
-        Interlocked.Exchange(ref isLoading, false);
+        Interlocked.Exchange(ref isLoading, 0);
     } else {
         logger.LogError("Detected loading screen, but could not find any process to unpark.");
     }
@@ -197,8 +210,9 @@ async Task<Process?> GetPathOfExileProcess() {
     var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
     while (!cts.IsCancellationRequested) {
         var procs = Process.GetProcesses();
+        var poeProcessNames = new[] { "Path of Exile 2", "Path of Exile" };
         Func<Process, bool> isPoE = (c =>
-            c.MainWindowTitle.Equals("Path of Exile 2", StringComparison.InvariantCultureIgnoreCase)
+            poeProcessNames.Any(name => c.MainWindowTitle.Equals(name, StringComparison.InvariantCultureIgnoreCase))
             && c.ProcessName.Contains("PathOfExile")
         );
         var result = procs.FirstOrDefault(isPoE);
