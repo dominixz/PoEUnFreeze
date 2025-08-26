@@ -1,3 +1,8 @@
+# Update
+When back from loading screen instead of turn all cores back I just change to turn off one core because it is better for make it not freeze when loading shader etc.
+
+
+
 # PoE Loading Screen Crash Fixer
 
 This is a simple, light-weight, tool to fix PoE 2 causing Windows to freeze completely (or only be able to move your mouse) during a loading screen. This seems to mostly, but not only, affect AMD X3D CPUs.
