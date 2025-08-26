@@ -24,6 +24,7 @@ var logger = serviceProvider.GetService<ILoggerFactory>()!.CreateLogger<Program>
 int numCores = GetNumberProcessors();
 
 int coresToPark = 4;
+int defaultDisableCPU = 1;
 if (Int32.TryParse(Environment.GetEnvironmentVariable("CORES_TO_PARK"), out int coresToParkEnv)) {
     coresToPark = coresToParkEnv;
 }
@@ -190,7 +191,9 @@ async Task ParkCores() {
 
 async Task ResumeCores() {
     var affinityBits = new StringBuilder(new string('1', numCores));
-
+    for (int i = 0; i < defaultDisableCPU; i++) {
+        affinityBits[affinityBits.Length - i - 1] = '0';
+    }
     IntPtr affinity = new IntPtr(Convert.ToInt64(affinityBits.ToString(), 2));
     
     var proc = await GetPathOfExileProcess();
